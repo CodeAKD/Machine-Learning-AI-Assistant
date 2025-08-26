@@ -676,9 +676,7 @@ class DashboardManager:
                 st.session_state.dashboard_page = 'quiz'
                 st.rerun()
         
-        # Add keyword-based recommendations section
-        st.markdown("### 📚 Recommended Content")
-        self.render_keyword_recommendations()
+
     
     def render_quiz_history(self):
         """
@@ -791,13 +789,23 @@ class DashboardManager:
                     'content': user_query
                 })
                 
-                # Search for similar documents
+                # Search for similar documents (with caching)
                 if st.session_state.vector_embeddings:
                     with st.spinner("🔍 Searching knowledge base..."):
-                        similar_docs = st.session_state.vector_embeddings.search_similar_documents(
-                            user_query,
-                            top_k=5
-                        )
+                        # Check for cached results first
+                        cached_docs = self.db.get_chat_query_cache(user_query)
+                        
+                        if cached_docs:
+                            # Use cached results
+                            similar_docs = cached_docs
+                        else:
+                            # Perform semantic search and cache results
+                            similar_docs = st.session_state.vector_embeddings.search_similar_documents(
+                                user_query,
+                                top_k=5
+                            )
+                            # Cache the results for future use
+                            self.db.save_chat_query_cache(user_query, similar_docs)
                         
                         # Generate response
                         response = generate_response(user_query, similar_docs)
@@ -867,10 +875,21 @@ class DashboardManager:
                     break
             
             if last_query:
-                similar_docs = st.session_state.vector_embeddings.search_similar_documents(
-                    last_query,
-                    top_k=3
-                )
+                # Check for cached results first
+                cached_docs = self.db.get_chat_query_cache(last_query)
+                
+                if cached_docs:
+                    # Use cached results (limit to top 3 for display)
+                    similar_docs = cached_docs[:3]
+                else:
+                    # This shouldn't happen often since chat queries are cached,
+                    # but fallback to search if needed
+                    similar_docs = st.session_state.vector_embeddings.search_similar_documents(
+                        last_query,
+                        top_k=3
+                    )
+                    # Cache the results
+                    self.db.save_chat_query_cache(last_query, similar_docs)
                 
                 if similar_docs:
                     for i, doc in enumerate(similar_docs):
@@ -892,91 +911,7 @@ class DashboardManager:
                         </div>
                         """, unsafe_allow_html=True)
     
-    def render_keyword_recommendations(self):
-        """
-        Render keyword-based document recommendations.
-        """
-        try:
-            # Import here to avoid circular imports
-            from streamlit_app import get_keyword_based_recommendations
-            
-            user = auth_manager.get_current_user()
-            if not user:
-                st.info("Please log in to see personalized recommendations.")
-                return
-            
-            # Get recommendations based on quiz keywords
-            recommendations = get_keyword_based_recommendations(
-                user_id=user['id'],
-                top_k=5  # Show top 5 recommendations
-            )
-            
-            if recommendations:
-                st.markdown("**Based on your quiz keywords, here are the top 5 most relevant documents from ML books:**")
-                
-                for i, doc in enumerate(recommendations, 1):
-                    score = doc.get('similarity_score', 0)
-                    filename = doc.get('metadata', {}).get('filename', f'Document {i}')
-                    
-                    # Color code based on similarity score like in AI chat
-                    if score > 0.8:
-                        color = "#4CAF50"  # Green
-                        score_label = "Excellent Match"
-                    elif score > 0.6:
-                        color = "#FF9800"  # Orange
-                        score_label = "Good Match"
-                    elif score > 0.4:
-                        color = "#2196F3"  # Blue
-                        score_label = "Fair Match"
-                    else:
-                        color = "#F44336"  # Red
-                        score_label = "Weak Match"
-                    
-                    # Display document card with similarity styling
-                    st.markdown(f"""
-                    <div style="background: white; border-left: 4px solid {color}; padding: 1rem; margin: 0.5rem 0; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                        <strong>📄 {filename}</strong><br>
-                        <small style="color: {color};">Similarity: {score:.3f} ({score_label})</small>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Add PDF preview button
-                    pdf_path = doc.get('pdf_path', '')
-                    if pdf_path and os.path.exists(pdf_path):
-                        from streamlit_app import get_pdf_download_link
-                        preview_link = get_pdf_download_link(pdf_path, filename)
-                        st.markdown(preview_link, unsafe_allow_html=True)
-                    else:
-                        st.markdown("<span style='color: #666; font-size: 12px;'>📄 PDF preview not available</span>", unsafe_allow_html=True)
-                    
-                    with st.expander(f"View Content Preview - {filename}"):
-                        # Show document content preview
-                        content = doc.get('content', 'No content available')
-                        if len(content) > 400:
-                            content = content[:400] + "..."
-                        st.write(content)
-                        
-                        # Show recommendation context
-                        if 'recommendation_keywords' in doc:
-                            st.markdown(f"**🔍 Matching Keywords:** {', '.join(doc['recommendation_keywords'])}")
-                        
-                        # Show metadata if available
-                        metadata = doc.get('metadata', {})
-                        if 'page_number' in metadata:
-                            st.markdown(f"**📖 Page:** {metadata['page_number']}")
-                        if 'chunk_index' in metadata:
-                            st.markdown(f"**📝 Section:** {metadata['chunk_index']}")
-            else:
-                # Check if user has taken quizzes
-                quiz_history = self.db.get_user_quiz_history(user['id'])
-                if quiz_history:
-                    st.info("No recommendations available. Try taking more quizzes to get personalized content suggestions!")
-                else:
-                    st.info("Take a quiz first to get personalized document recommendations based on your interests!")
-                    
-        except Exception as e:
-            st.error(f"Error loading recommendations: {str(e)}")
-            print(f"Recommendation error: {e}")
+
 
 # Global instances
 quiz_manager = QuizManager()
