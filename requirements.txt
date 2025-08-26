@@ -4,6 +4,7 @@ sentence-transformers
 scikit-learn
 numpy
 pandas
+python-dotenv
 
 # PDF processing
 PyPDF2
