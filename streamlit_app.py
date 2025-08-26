@@ -502,51 +502,7 @@ def find_original_pdf_path(filename: str) -> str:
     
     return ""
 
-def get_keyword_based_recommendations(user_id: int, top_k: int = 5) -> List[Dict]:
-    """
-    Get document recommendations based on user's quiz keywords.
-    
-    Args:
-        user_id (int): User ID
-        top_k (int): Number of recommendations to return
-        
-    Returns:
-        List[Dict]: List of recommended documents with metadata
-    """
-    try:
-        db = Database()
-        
-        # Get user's quiz keywords
-        keywords = db.get_user_quiz_keywords(user_id, limit=10)
-        
-        if not keywords or not st.session_state.vector_embeddings:
-            return []
-        
-        # Create a search query from the most relevant keywords
-        search_query = ' '.join(keywords[:15])  # Use top 15 keywords for better matching
-        
-        # Search for similar documents
-        similar_docs = st.session_state.vector_embeddings.search_similar_documents(
-            search_query,
-            top_k=top_k
-        )
-        
-        # Add keyword context and PDF path to results
-        for doc in similar_docs:
-            doc['recommendation_keywords'] = keywords[:8]
-            doc['search_query'] = search_query
-            
-            # Find the original PDF path
-            filename = doc.get('metadata', {}).get('filename', '')
-            if filename:
-                pdf_path = find_original_pdf_path(filename)
-                doc['pdf_path'] = pdf_path
-        
-        return similar_docs
-        
-    except Exception as e:
-        print(f"Error getting keyword-based recommendations: {e}")
-        return []
+
 
 def load_user_chat_history():
     """

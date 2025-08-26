@@ -90,6 +90,22 @@ class Database:
             )
         """)
         
+
+        
+        # Chat query cache table for semantic search results
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS chat_query_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query_hash TEXT NOT NULL, -- Hash of the user query
+                query_text TEXT NOT NULL, -- Original query text for reference
+                search_results TEXT NOT NULL, -- JSON string with cached search results
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP, -- Optional expiration time
+                UNIQUE(query_hash)
+            )
+        """)
+
+        
         conn.commit()
         conn.close()
     
@@ -662,3 +678,105 @@ class Database:
         except Exception as e:
             print(f"Error getting user quiz keywords: {e}")
             return []
+    
+
+    
+    def save_chat_query_cache(self, query_text: str, search_results: List[Dict]) -> bool:
+        """
+        Save cached search results for a chat query.
+        
+        Args:
+            query_text (str): Original query text
+            search_results (List[Dict]): Search results from semantic search
+            
+        Returns:
+            bool: True if saved successfully
+        """
+        try:
+            import hashlib
+            
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Create hash of query for fast lookup
+            query_hash = hashlib.md5(query_text.lower().strip().encode()).hexdigest()
+            
+            # Save search results as JSON
+            results_json = json.dumps(search_results)
+            
+            cursor.execute("""
+                INSERT OR REPLACE INTO chat_query_cache 
+                (query_hash, query_text, search_results)
+                VALUES (?, ?, ?)
+            """, (query_hash, query_text, results_json))
+            
+            conn.commit()
+            conn.close()
+            return True
+            
+        except Exception as e:
+            print(f"Error saving chat query cache: {e}")
+            return False
+    
+    def get_chat_query_cache(self, query_text: str) -> Optional[List[Dict]]:
+        """
+        Get cached search results for a chat query.
+        
+        Args:
+            query_text (str): Query text to search for
+            
+        Returns:
+            Optional[List[Dict]]: Cached search results or None
+        """
+        try:
+            import hashlib
+            
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Create hash of query for lookup
+            query_hash = hashlib.md5(query_text.lower().strip().encode()).hexdigest()
+            
+            cursor.execute("""
+                SELECT search_results FROM chat_query_cache
+                WHERE query_hash = ?
+            """, (query_hash,))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result and result[0]:
+                return json.loads(result[0])
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error getting chat query cache: {e}")
+            return None
+    
+    def clear_old_chat_cache(self, days_old: int = 7) -> bool:
+        """
+        Clear chat query cache entries older than specified days.
+        
+        Args:
+            days_old (int): Number of days after which to clear cache
+            
+        Returns:
+            bool: True if cleared successfully
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                DELETE FROM chat_query_cache
+                WHERE created_at < datetime('now', '-{} days')
+            """.format(days_old))
+            
+            conn.commit()
+            conn.close()
+            return True
+            
+        except Exception as e:
+            print(f"Error clearing old chat cache: {e}")
+            return False
