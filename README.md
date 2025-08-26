@@ -41,20 +41,7 @@ cd ml-ai-assistant
 
 ---
 
-### **Step 2: Clone the Repository** 🔄
-
-```bash
-# Clone the repository
-git clone https://github.com/CodeAKD/Machine-Learning-AI-Assistant.git
-cd Machine-Learning-AI-Assistant
-
-# Alternative: Download as ZIP from GitHub
-# Extract the ZIP file to your desired location
-```
-
----
-
-### **Step 3: Create API Keys** 🔑
+### **Step 2: Create API Keys** 🔑
 
 #### **OpenAI API Key:**
 1. Visit [OpenAI Platform](https://platform.openai.com/)
@@ -71,7 +58,7 @@ cd Machine-Learning-AI-Assistant
 
 ---
 
-### **Step 4: Create Environment File** 🔧
+### **Step 3: Create Environment File** 🔧
 
 Create a `.env` file in the project root directory:
 
@@ -97,7 +84,7 @@ OPENAI_MODEL=gpt-3.5-turbo
 
 ---
 
-### **Step 5: Create Virtual Environment** 🐍
+### **Step 4: Create Virtual Environment** 🐍
 
 ```bash
 # Create virtual environment
@@ -113,7 +100,7 @@ source .venv/bin/activate
 
 ---
 
-### **Step 6: Install Dependencies** 📦
+### **Step 5: Install Dependencies** 📦
 
 ```bash
 # Upgrade pip
@@ -131,7 +118,7 @@ pip install streamlit nltk sentence-transformers faiss-cpu openai
 
 ---
 
-### **Step 7: Read Technical Documentation** 📚
+### **Step 6: Read Technical Documentation** 📚
 
 **Before proceeding, please read:**
 - [`ML_AI_Assistant_Technical_Documentation.md`](./ML_AI_Assistant_Technical_Documentation.md)
@@ -145,7 +132,7 @@ This document provides:
 
 ---
 
-### **Step 8: Verify ML Books Setup** ✅
+### **Step 7: Verify ML Books Setup** ✅
 
 **Ensure Step 0 is completed:**
 
@@ -162,7 +149,7 @@ ls "ML Books/"
 
 ---
 
-### **Step 9: Run NLP Pipeline** 🔄
+### **Step 8: Run NLP Pipeline** 🔄
 
 ```bash
 # Process the PDF documents
@@ -177,7 +164,7 @@ python nlp_pipeline.py
 
 ---
 
-### **Step 10: Generate Vector Embeddings** 🎯
+### **Step 9: Generate Vector Embeddings** 🎯
 
 ```bash
 # Create vector embeddings for similarity search
@@ -193,7 +180,7 @@ python vector_embeddings.py
 
 ---
 
-### **Step 11: Launch Streamlit Application** 🚀
+### **Step 10: Launch Streamlit Application** 🚀
 
 ```bash
 # Start the web application
@@ -210,7 +197,7 @@ Network URL: http://192.168.x.x:8501
 
 ---
 
-### **Step 12: Responsible Usage Guidelines** ⚠️
+### **Step 11: Responsible Usage Guidelines** ⚠️
 
 **Please use the application responsibly:**
 
