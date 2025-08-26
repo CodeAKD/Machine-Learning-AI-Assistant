@@ -12,6 +12,11 @@ from vector_embeddings import VectorEmbeddings
 import openai
 from typing import List, Dict
 from dotenv import load_dotenv
+from auth import auth_manager
+from quiz_dashboard import dashboard_manager
+from database import Database
+import base64
+import mimetypes
 
 # Page configuration
 st.set_page_config(
@@ -180,15 +185,15 @@ st.markdown("""
         background: linear-gradient(135deg, #ff8c42 0%, #ffa726 100%);
     }
     
-    /* Metrics styling - Mint gradient */
+    /* Metrics styling - Light Orange and Mint blend */
     .metric-card {
-        background: linear-gradient(135deg, #66bb6a 0%, #81c784 100%);
+        background: linear-gradient(135deg, #ffcc80 0%, #a5d6a7 50%, #ffcc80 100%);
         border-radius: 12px;
         padding: 1rem;
         text-align: center;
-        color: white;
+        color: #2e7d32;
         font-weight: 600;
-        box-shadow: 0 5px 15px rgba(102, 187, 106, 0.2);
+        box-shadow: 0 5px 15px rgba(255, 204, 128, 0.3);
     }
     
     /* Action button styling - Enhanced for main action buttons */
@@ -230,6 +235,8 @@ if 'vector_embeddings' not in st.session_state:
     st.session_state.vector_embeddings = None
 if 'nlp_pipeline' not in st.session_state:
     st.session_state.nlp_pipeline = None
+if 'user_chat_history' not in st.session_state:
+    st.session_state.user_chat_history = {}
 
 @st.cache_resource
 def load_nlp_pipeline():
@@ -385,14 +392,211 @@ Answer:"""
         response += "\nNote: AI response generation failed. Please check your OpenAI API configuration."
         return response
 
-def main():
-    # Header
-    st.markdown('<div class="main-container">', unsafe_allow_html=True)
-    st.markdown('<h1 class="main-header">📚 ML Books AI Assistant</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">Your intelligent companion for Machine Learning literature</p>', unsafe_allow_html=True)
+def save_user_chat_history():
+    """
+    Save current chat history to database for authenticated user.
+    """
+    user = auth_manager.get_current_user()
+    if user and st.session_state.chat_history:
+        db = Database()
+        chat_data = json.dumps(st.session_state.chat_history)
+        db.save_chat_history(user['id'], user['session_id'], chat_data)
+
+def get_pdf_download_link(pdf_path: str, filename: str) -> str:
+    """
+    Generate a download link for PDF files that opens in a new tab.
     
-    # Initialize components
+    Args:
+        pdf_path (str): Path to the PDF file
+        filename (str): Display name for the file
+        
+    Returns:
+        str: HTML link for PDF preview
+    """
+    try:
+        # Check if file exists
+        if not os.path.exists(pdf_path):
+            return f"<span style='color: red;'>❌ File not found: {filename}</span>"
+        
+        # Read PDF file and encode to base64
+        with open(pdf_path, "rb") as f:
+            pdf_data = f.read()
+        
+        b64_pdf = base64.b64encode(pdf_data).decode('utf-8')
+        
+        # Create data URL for PDF
+        pdf_display = f'data:application/pdf;base64,{b64_pdf}'
+        
+        # Create HTML link that opens in new tab
+        html_link = f'''
+        <a href="{pdf_display}" target="_blank" style="
+            background: linear-gradient(135deg, #ff8c42 0%, #ffa726 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 14px;
+            display: inline-block;
+            margin: 5px 0;
+            box-shadow: 0 3px 10px rgba(255, 140, 66, 0.3);
+            transition: transform 0.2s ease;
+        " onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+            📖 Preview {filename}
+        </a>
+        '''
+        
+        return html_link
+        
+    except Exception as e:
+        return f"<span style='color: red;'>❌ Error loading {filename}: {str(e)}</span>"
+
+def find_original_pdf_path(filename: str) -> str:
+    """
+    Find the original PDF file path based on filename.
+    
+    Args:
+        filename (str): The PDF filename
+        
+    Returns:
+        str: Path to the original PDF file
+    """
+    # Common directories where PDFs might be stored
+    possible_dirs = [
+        "ML Books",
+        "New_Entry",
+        ".",  # Current directory
+        "uploads",
+        "documents"
+    ]
+    
+    # First try exact filename match
+    for directory in possible_dirs:
+        if os.path.exists(directory):
+            pdf_path = os.path.join(directory, filename)
+            if os.path.exists(pdf_path):
+                return pdf_path
+    
+    # If exact match not found, try case-insensitive search
+    for directory in possible_dirs:
+        if os.path.exists(directory):
+            try:
+                files_in_dir = os.listdir(directory)
+                for file in files_in_dir:
+                    if file.lower() == filename.lower() and file.endswith('.pdf'):
+                        return os.path.join(directory, file)
+            except OSError:
+                continue
+    
+    # If still not found, try partial filename matching
+    base_name = filename.replace('.pdf', '').lower()
+    for directory in possible_dirs:
+        if os.path.exists(directory):
+            try:
+                files_in_dir = os.listdir(directory)
+                for file in files_in_dir:
+                    if file.endswith('.pdf') and base_name in file.lower():
+                        return os.path.join(directory, file)
+            except OSError:
+                continue
+    
+    return ""
+
+def get_keyword_based_recommendations(user_id: int, top_k: int = 5) -> List[Dict]:
+    """
+    Get document recommendations based on user's quiz keywords.
+    
+    Args:
+        user_id (int): User ID
+        top_k (int): Number of recommendations to return
+        
+    Returns:
+        List[Dict]: List of recommended documents with metadata
+    """
+    try:
+        db = Database()
+        
+        # Get user's quiz keywords
+        keywords = db.get_user_quiz_keywords(user_id, limit=10)
+        
+        if not keywords or not st.session_state.vector_embeddings:
+            return []
+        
+        # Create a search query from the most relevant keywords
+        search_query = ' '.join(keywords[:15])  # Use top 15 keywords for better matching
+        
+        # Search for similar documents
+        similar_docs = st.session_state.vector_embeddings.search_similar_documents(
+            search_query,
+            top_k=top_k
+        )
+        
+        # Add keyword context and PDF path to results
+        for doc in similar_docs:
+            doc['recommendation_keywords'] = keywords[:8]
+            doc['search_query'] = search_query
+            
+            # Find the original PDF path
+            filename = doc.get('metadata', {}).get('filename', '')
+            if filename:
+                pdf_path = find_original_pdf_path(filename)
+                doc['pdf_path'] = pdf_path
+        
+        return similar_docs
+        
+    except Exception as e:
+        print(f"Error getting keyword-based recommendations: {e}")
+        return []
+
+def load_user_chat_history():
+    """
+    Load chat history from database for authenticated user.
+    """
+    user = auth_manager.get_current_user()
+    if user:
+        db = Database()
+        chat_history = db.get_user_chat_history(user['id'])
+        if chat_history:
+            # Load the most recent chat session
+            latest_chat = chat_history[0]  # Assuming sorted by date desc
+            if latest_chat['chat_data']:
+                st.session_state.chat_history = json.loads(latest_chat['chat_data'])
+
+def main():
+    # Check authentication status
+    if not auth_manager.is_authenticated():
+        # Show authentication page
+        auth_manager.render_auth_page()
+        return
+    
+    # Initialize session state for components
+    if 'nlp_pipeline' not in st.session_state:
+        st.session_state.nlp_pipeline = None
+    if 'vector_embeddings' not in st.session_state:
+        st.session_state.vector_embeddings = None
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
+    
+    # Initialize components for control panel display
     initialize_components()
+    
+    # User is authenticated - check if first time user needs quiz
+    user = auth_manager.get_current_user()
+    db = Database()
+    user_stats = db.get_user_stats(user['id'])
+    
+    # If user has no quiz history, redirect to quiz
+    if not user_stats or user_stats.get('total_quizzes', 0) == 0:
+        if 'first_time_quiz_completed' not in st.session_state:
+            st.info("🎉 Welcome! As a new user, please take a quick assessment quiz to personalize your learning experience.")
+            dashboard_manager.quiz_manager.render_quiz_page()
+            return
+    
+    # Load user's chat history
+    load_user_chat_history()
+    
+    # Show dashboard
+    dashboard_manager.render_dashboard()
     
     # Sidebar
     with st.sidebar:
@@ -442,6 +646,20 @@ def main():
         if st.button("💬 AI Chat", key="chat_action", use_container_width=True):
             st.session_state.selected_action = "chat"
             st.rerun()
+    
+    # Add user management section
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("### 👤 User Management")
+        user = auth_manager.get_current_user()
+        if user:
+            st.write(f"**Logged in as:** {user['email']}")
+            if st.button("🗑️ Delete Chat History"):
+                db = Database()
+                db.delete_user_chat_history(user['id'])
+                st.session_state.chat_history = []
+                st.success("Chat history deleted!")
+                st.rerun()
     
     # Dynamic content based on selected action
     if st.session_state.selected_action == "upload":
