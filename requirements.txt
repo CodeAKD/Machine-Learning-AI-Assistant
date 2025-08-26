@@ -1,0 +1,26 @@
+# Core NLP and ML libraries
+nltk
+sentence-transformers
+scikit-learn
+numpy
+pandas
+
+# PDF processing
+PyPDF2
+
+# Vector similarity search
+faiss-cpu
+
+# Streamlit and UI
+streamlit
+plotly
+
+# Additional utilities
+tqdm
+requests
+
+# Optional: OpenAI for advanced chat (uncomment if needed)
+openai
+
+# System utilities
+psutil

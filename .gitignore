@@ -1,0 +1,14 @@
+.env
+
+# Large PDF files (temporarily excluded due to GitHub size limits)
+ML Books/
+
+# Virtual environment
+.venv/
+__pycache__/
+*.pyc
+
+# Embeddings and processed data
+embeddings/
+cleaned ML Books/
+New_Entry/
